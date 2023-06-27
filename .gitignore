@@ -1,0 +1,41 @@
+# Compiled class files
+*.class
+
+# Build output
+build/
+out/
+
+# Gradle files
+.gradle/
+build.gradle
+gradle/
+gradlew
+gradlew.bat
+
+# Local configuration files
+local.properties
+
+# Android Studio files
+*.iml
+.idea/
+*.ipr
+*.iws
+/.idea/
+/*.iml
+/.gradle/
+/.kotlin/
+/.kaptKotlin/
+/.apt_generated/
+
+# Generated files
+/generated/
+
+# Crashlytics build metadata
+/crashlytics.properties
+
+# Kotlin-specific
+*.kotlin_builtins
+.idea_modules/
+
+# Custom files or directories
+Utils.kt
