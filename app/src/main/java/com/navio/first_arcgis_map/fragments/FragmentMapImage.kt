@@ -1,4 +1,4 @@
-package com.navio.first_arcgis_map
+package com.navio.first_arcgis_map.fragments
 
 import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
@@ -34,7 +34,6 @@ class FragmentMapImage(private val image: BitmapDrawable) : Fragment() {
     }
 
     companion object {
-
         @JvmStatic
         fun newInstance(image: BitmapDrawable) = FragmentMapImage(image)
     }

@@ -1,20 +1,15 @@
-package com.navio.first_arcgis_map
+package com.navio.first_arcgis_map.fragments
 
-import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
-import android.os.Build
+import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
-import android.provider.MediaStore
-import android.util.Log
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
 import androidx.fragment.app.commit
 import androidx.lifecycle.lifecycleScope
 import com.arcgismaps.Color
@@ -34,13 +29,13 @@ import com.arcgismaps.mapping.symbology.SimpleMarkerSymbolStyle
 import com.arcgismaps.mapping.view.Graphic
 import com.arcgismaps.mapping.view.GraphicsOverlay
 import com.arcgismaps.mapping.view.MapView
+import com.navio.first_arcgis_map.R
 import com.navio.first_arcgis_map.databinding.FragmentMapBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.io.File
+import java.io.FileOutputStream
 
 class FragmentMap : Fragment() {
 
@@ -71,8 +66,6 @@ class FragmentMap : Fragment() {
 
         setupMap()
         addGraphics()
-        //todo Test
-        saveMapInstance()
     }
 
     //Creates an ArcGIS map
@@ -139,98 +132,78 @@ class FragmentMap : Fragment() {
         createdGraphicsOverlay.graphics.add(polygonGraphic)
     }
 
-    //Invokes a function to take an image of the map on another Thread
-    private fun saveMapInstance() {
-
-        val snapHandler = Handler(Looper.getMainLooper())
-        snapHandler.postDelayed({
-
-            lifecycleScope.launch {
-                showCurrentMapSnapAsImage()
-            }
-        }, 10000)
+    //Starts coroutine to take picture from map
+    public fun startSnapshotCoroutine() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            snapshotFromMap()
+        }
     }
 
-    private suspend fun showCurrentMapSnapAsImage() {
+    private suspend fun snapshotFromMap() {
 
         val resultBitmapImage = mapView.exportImage()
 
         if (resultBitmapImage.isSuccess) {
 
             resultBitmapImage.getOrNull()?.let { imageDrawable ->
-
-                //Shows image
-                lifecycleScope.launch(Dispatchers.Main) {
-
-                    parentFragmentManager.commit {
-
-                        //Let commit operations decide better operation's order
-                        setReorderingAllowed(true)
-
-                        replace(
-                            R.id.fragment_container_map,
-                            FragmentMapImage.newInstance(imageDrawable)
-                        )
-                        //Save the old fragment in pile
-                        addToBackStack(null)
-                    }
-                }
                 //Stores images in gallery
-                lifecycleScope.launch(Dispatchers.IO) {
+                val imageBitmap = imageDrawable.bitmap
+                val isBitmapSaved = saveBitmapToInternalStorage(requireContext(), imageBitmap)
 
-                    val imageBitmap = imageDrawable.bitmap
+                //todo Showing image here
+                showSnapshotOnFragment(imageDrawable)
 
-                    val isSaved = saveBitmapToGallery(requireContext(), imageBitmap)
-                    if (isSaved) {
-                        // Image was successfully saved to the gallery
-                    } else {
-                        // Saving failed
-                    }
-                }
-
-            } ?: kotlin.run {
-                //todo Maybe eliminate...
-                lifecycleScope.launch(Dispatchers.Main) {
-                    Toast.makeText(requireContext(), "Bitmap is null", Toast.LENGTH_LONG).show()
+                //If couldn't be saved notifies
+                if (!isBitmapSaved) {
+                    //todo Log.e
                 }
             }
         }
     }
 
-    suspend fun saveBitmapToGallery(context: Context, bitmap: Bitmap): Boolean = withContext(Dispatchers.IO) {
-        val imageFileName = generateUniqueFileName()
-        val contentValues = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, imageFileName)
-            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
-                put(MediaStore.Images.Media.IS_PENDING, 1)
+    private suspend fun showSnapshotOnFragment(imageDrawable: BitmapDrawable) =
+
+        withContext(Dispatchers.Main) {
+
+            parentFragmentManager.commit {
+
+                //Let commit operations decide better operation's order
+                setReorderingAllowed(true)
+
+                replace(
+                    R.id.fragment_container_top,
+                    FragmentMapImage.newInstance(imageDrawable)
+                )
+                //Save the old fragment in pile
+                addToBackStack(null)
             }
         }
 
-        val resolver = context.contentResolver
-        val collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-        val imageUri = resolver.insert(collection, contentValues)
+    private suspend fun saveBitmapToInternalStorage(context: Context, bitmap: Bitmap): Boolean =
+        withContext(Dispatchers.IO) {
 
-        return@withContext if (imageUri != null) {
-            resolver.openOutputStream(imageUri)?.use { outputStream ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+            //todo Replace for each project name
+            val imageFileName = "my_image.jpg"
+
+            //Get the directory for your app's internal storage
+            val directory = File(context.filesDir, "thumbnails").apply {
+                mkdirs() //Create the directory if it doesn't exist
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                contentValues.clear()
-                contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
-                resolver.update(imageUri, contentValues, null, null)
+
+            //Create the file path for the image
+            val imageFile = File(directory, imageFileName)
+
+            return@withContext runCatching {
+                //Write the bitmap to the file
+                FileOutputStream(imageFile).use { outputStream ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 25, outputStream)
+                }
+                true //Success
+            }.getOrElse {
+                it.printStackTrace()
+                false //Failure
             }
-            true
-        } else {
-            false
         }
-    }
-
-    private fun generateUniqueFileName(): String {
-        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        return "IMG_$timeStamp.jpg"
-    }
 
     companion object {
         @JvmStatic
